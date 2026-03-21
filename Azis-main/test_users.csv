@@ -1,0 +1,21 @@
+name,email,role,position,managerEmail,points
+Ana Silva,ana@azis.com,manager,Diretora,,100
+Carlos Santos,carlos@azis.com,member,Analista,ana@azis.com,50
+Maria Oliveira,maria@azis.com,member,Designer,ana@azis.com,40
+Pedro Costa,pedro@azis.com,member,Desenvolvedor,carlos@azis.com,30
+Julia Lima,julia@azis.com,member,Analista,carlos@azis.com,25
+Rafael Souza,rafael@azis.com,member,Designer,maria@azis.com,20
+Lucas Freitas,lucas@azis.com,member,Desenvolvedor,pedro@azis.com,15
+Giovanne Sousa,gio@azis.com,member,Analista,julia@azis.com,10
+Beatriz Lima,beatriz@azis.com,member,Designer,rafael@azis.com,5
+Fernanda Rocha,fernanda@azis.com,member,Desenvolvedor,lucas@azis.com,0
+Carlos Santos,carlos@azis.com,member,Analista Duplicado,ana@azis.com,50
+Ana Silva,ana@azis.com,manager,Diretora Duplicada,,100
+Usuario Sem Email,,member,Posicao Sem Email,ana@azis.com,0
+Email Invalido,emailinvalido,member,Posicao Invalida,ana@azis.com,0
+Outro Email Invalido,outro@invalido,member,Outra Posicao,ana@azis.com,0
+Manager Inexistente,inexistente@azis.com,member,Posicao Inexistente,manager@naoexiste.com,0
+Usuario Repetido,lucas@azis.com,member,Desenvolvedor Repetido,pedro@azis.com,15
+Sem Manager,,member,Sem Manager,,0
+Jubileu Silva,jubileu@azis.com,member,Analista,julia@azis.com,10
+Ronaldo Nazario,ronaldo@azis.com,member,Desenvolvedor,pedro@azis.com,15
