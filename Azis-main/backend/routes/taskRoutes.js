@@ -7,13 +7,13 @@ const {
   updateTask,
   deleteTask,
 } = require('../controllers/taskController')
-const { verifyToken, requireLevel } = require('../middlewares/authMiddleware')
+const { verifyToken, requireLevel, requireRole } = require('../middlewares/authMiddleware')
 
 const router = express.Router()
 
 router.use(verifyToken)
 
-router.post('/', requireLevel(2), createTask)
+router.post('/', requireRole('gestor'), createTask)
 router.get('/', requireLevel(1), getTasks)
 router.patch('/:id/status', requireLevel(1), updateTaskStatus)
 router.patch('/:id/review', requireLevel(2), reviewTask)

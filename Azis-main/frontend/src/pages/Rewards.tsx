@@ -11,6 +11,7 @@ import { getCurrentUser } from "@/data/mock";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { getApiUrl, getAuthHeaders } from "@/lib/api";
+import chestVideo from "@/assets/treasure-chest.mp4";
 
 interface Reward {
   id: string;
@@ -23,6 +24,23 @@ interface Reward {
   quantity?: number;
   created_at: string;
   updated_at: string;
+}
+
+function normalizeReward(raw: any): Reward {
+  const points_cost = raw.points_cost ?? raw.cost ?? 0
+  const quantity = raw.quantity ?? raw.stock ?? 0
+  return {
+    id: raw.id?.toString?.() ?? "",
+    name: raw.name ?? raw.title ?? "",
+    title: raw.title ?? raw.name ?? "",
+    description: raw.description ?? "",
+    cost: points_cost,
+    points_cost,
+    stock: quantity,
+    quantity,
+    created_at: raw.created_at ?? raw.createdAt ?? "",
+    updated_at: raw.updated_at ?? raw.updatedAt ?? "",
+  }
 }
 
 interface Redemption {
@@ -45,6 +63,7 @@ export default function Rewards() {
   const [redemptions, setRedemptions] = useState<Redemption[]>([]);
   const [loading, setLoading] = useState(true);
   const [redeeming, setRedeeming] = useState<string | null>(null);
+  const [showChest, setShowChest] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [newReward, setNewReward] = useState({ title: "", description: "", points_cost: 0, quantity: 0 });
@@ -55,22 +74,18 @@ export default function Rewards() {
 
   const loadUserPoints = async () => {
     try {
-      const response = await fetch(getApiUrl("/api/users"), {
+      const response = await fetch(getApiUrl("/api/users/me"), {
         headers: getAuthHeaders(),
       });
-      if (!response.ok) return;
-      const users = await response.json();
-      const found = users.find(
-        (u: any) =>
-          u.id?.toString() === currentUser.id?.toString() ||
-          u.email?.toLowerCase() === currentUser.email?.toLowerCase()
-      );
-      if (found && found.points != null) {
-        setPoints(found.points);
-        const stored = localStorage.getItem("azis_user");
-        if (stored) {
-          const curr = JSON.parse(stored);
-          localStorage.setItem("azis_user", JSON.stringify({ ...curr, points: found.points }));
+      if (response.ok) {
+        const userData = await response.json();
+        if (userData.points != null) {
+          setPoints(userData.points);
+          const stored = localStorage.getItem("azis_user");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            localStorage.setItem("azis_user", JSON.stringify({ ...parsed, points: userData.points }));
+          }
         }
       }
     } catch (error) {
@@ -85,7 +100,8 @@ export default function Rewards() {
       });
       if (response.ok) {
         const data = await response.json();
-        setRewards(data.data || data.rewards || []);
+        const rawRewards = data.data || data.rewards || [];
+        setRewards(Array.isArray(rawRewards) ? rawRewards.map(normalizeReward) : []);
       }
     } catch (error) {
       console.error("Error loading rewards:", error);
@@ -125,6 +141,9 @@ export default function Rewards() {
     setLoading(false);
   };
 
+  // Histórico removido - funcionalidade desativada pelo cliente.
+
+
   const handleRedeem = async (reward: Reward) => {
     if (points < reward.cost) {
       toast.error("Pontos insuficientes!");
@@ -141,13 +160,14 @@ export default function Rewards() {
       const data = await response.json();
       if (response.ok) {
         setPoints(data.userPoints ?? data.data?.remaining_points ?? (points - reward.cost));
-        setRewards((prev) =>
-          prev.map((r) => (r.id === reward.id ? { ...r, stock: Math.max(r.stock - 1, 0) } : r))
-        );
-        if (data.data?.reward || data.redemption) {
-          setRedemptions((prev) => [data.data?.reward || data.redemption, ...prev]);
-        }
-        toast.success(`🎉 "${reward.name}" resgatado com sucesso!`);
+
+        // Sincroniza com servidor após resgate para evitar divergência e garantir campos reward_name
+        await loadUserPoints();
+        await loadRewards();
+        await loadRedemptions();
+
+        setShowChest(true);
+        toast.success(`🎉 "${reward.name || reward.title}" resgatado com sucesso!`);
       } else {
         toast.error(data.message || "Erro ao resgatar recompensa");
       }
@@ -191,7 +211,8 @@ export default function Rewards() {
 
       const data = await response.json();
       if (response.ok) {
-        setRewards((prev) => [data.data || data.reward, ...prev]);
+        const createdReward = normalizeReward(data.data || data.reward || {});
+        setRewards((prev) => [createdReward, ...prev]);
         setIsCreateModalOpen(false);
         setNewReward({ title: "", description: "", points_cost: 0, quantity: 0 });
         toast.success("Recompensa criada com sucesso!");
@@ -249,21 +270,17 @@ export default function Rewards() {
 
       const data = await response.json();
       if (response.ok) {
+        const updatedReward = normalizeReward({
+          ...(data.data || data.reward || {}),
+          title: editReward.title,
+          name: editReward.title,
+          description: editReward.description,
+          points_cost: editReward.points_cost,
+          quantity: editReward.quantity,
+        });
+
         setRewards((prev) =>
-          prev.map((r) =>
-            r.id === editingReward.id
-              ? {
-                  ...r,
-                  title: editReward.title,
-                  name: editReward.title,
-                  description: editReward.description,
-                  points_cost: editReward.points_cost,
-                  cost: editReward.points_cost,
-                  quantity: editReward.quantity,
-                  stock: editReward.quantity,
-                }
-              : r
-          )
+          prev.map((r) => (r.id === editingReward.id ? updatedReward : r))
         );
         setIsEditModalOpen(false);
         setEditingReward(null);
@@ -302,6 +319,8 @@ export default function Rewards() {
 
   useEffect(() => {
     loadData();
+    const interval = setInterval(loadUserPoints, 30000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -570,43 +589,101 @@ export default function Rewards() {
               <p className="text-muted-foreground">Você ainda não resgatou nenhuma recompensa.</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {redemptions.map((redemption) => (
-                <Card key={redemption.id} className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 bg-gradient-card rounded-lg flex items-center justify-center text-2xl">
-                        🎁
+            <>
+              <div className="space-y-4">
+                {redemptions.map((redemption) => (
+                  <Card key={redemption.id} className="p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 bg-gradient-card rounded-lg flex items-center justify-center text-2xl">
+                          🎁
+                        </div>
+                        <div>
+                          <h3 className="font-heading font-semibold text-foreground">{redemption.reward_name}</h3>
+                          <p className="text-sm text-muted-foreground">{redemption.reward_description}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Resgatado em {new Date(redemption.created_at).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-heading font-semibold text-foreground">{redemption.reward_name}</h3>
-                        <p className="text-sm text-muted-foreground">{redemption.reward_description}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Resgatado em {new Date(redemption.created_at).toLocaleDateString("pt-BR")}
-                        </p>
+                      <div className="text-right">
+                        <div className="flex items-center gap-1 mb-1">
+                          <Star className="w-4 h-4 text-warning" />
+                          <span className="font-heading font-bold text-foreground">{redemption.cost}</span>
+                        </div>
+                        <Badge variant={redemption.status === "completed" ? "default" : "secondary"} className="text-xs">
+                          {redemption.status === "completed" ? "Concluído" : redemption.status}
+                        </Badge>
+                        {redemption.voucher_code && (
+                          <p className="text-xs text-muted-foreground mt-1 font-mono">
+                            Voucher: {redemption.voucher_code}
+                          </p>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 mb-1">
-                        <Star className="w-4 h-4 text-warning" />
-                        <span className="font-heading font-bold text-foreground">{redemption.cost}</span>
-                      </div>
-                      <Badge variant={redemption.status === "completed" ? "default" : "secondary"} className="text-xs">
-                        {redemption.status === "completed" ? "Concluído" : redemption.status}
-                      </Badge>
-                      {redemption.voucher_code && (
-                        <p className="text-xs text-muted-foreground mt-1 font-mono">
-                          Voucher: {redemption.voucher_code}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ))}
-            </div>
+                  </Card>
+                ))}
+              </div>
+            </>
           )}
         </TabsContent>
       </Tabs>
+
+      {showChest && (
+        <>
+          <style>{`
+            @keyframes chestFadeIn {
+              from { opacity: 0; transform: scale(0.8); }
+              to { opacity: 1; transform: scale(1); }
+            }
+          `}</style>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              pointerEvents: 'none',
+              zIndex: 9999,
+              animation: 'chestFadeIn 0.3s ease-out',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              background: 'rgba(0, 0, 0, 0.45)'
+            }}
+          >
+            <div
+              style={{
+                position: 'relative',
+                width: '500px',
+                maxWidth: '90vw',
+                backgroundColor: '#000000',
+                borderRadius: '1rem',
+                boxShadow: '0 20px 60px rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                overflow: 'hidden'
+              }}
+            >
+              <video
+                src={chestVideo}
+                autoPlay
+                muted
+                onEnded={() => setTimeout(() => setShowChest(false), 500)}
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  display: 'block'
+                }}
+              />
+            </div>
+            </div>
+        </>
+      )}
     </div>
   );
 }

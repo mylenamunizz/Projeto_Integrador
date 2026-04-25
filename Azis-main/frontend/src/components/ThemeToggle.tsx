@@ -18,9 +18,10 @@ export function ThemeToggle() {
     }
   }, []);
 
-  // apply class and persist
+  // apply class, data-theme and persist
   useEffect(() => {
     document.documentElement.classList.toggle("dark", theme === "dark");
+    document.documentElement.dataset.theme = theme;
     localStorage.setItem("theme", theme);
   }, [theme]);
 

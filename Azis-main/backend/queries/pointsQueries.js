@@ -17,6 +17,9 @@ async function addPointsToUser(userId, points) {
       await client.query('INSERT INTO user_points (user_id, total_points, updated_at) VALUES ($1, $2, NOW())', [userId, points])
     }
 
+    // Sincronizar com a tabela users
+    await client.query('UPDATE users SET points = points + $1 WHERE id = $2', [points, userId])
+
     await client.query('COMMIT')
 
     const updated = await pool.query('SELECT total_points FROM user_points WHERE user_id = $1', [userId])

@@ -7,6 +7,10 @@ async function createTask(req, res) {
   try {
     const { title, description, points = 10, deadline, assignee_id } = req.body
 
+    if (req.user?.role !== 'gestor') {
+      return res.status(403).json({ error: 'Apenas gestores podem criar tarefas' })
+    }
+
     if (!title) {
       return res.status(400).json({ error: 'Título é obrigatório' })
     }
@@ -14,12 +18,12 @@ async function createTask(req, res) {
       return res.status(400).json({ error: 'Responsável é obrigatório' })
     }
 
-    // Validar assignee (pode ser o próprio gestor ou um subordinado)
+    // Validar assignee (deve ser subordinado direto do gestor)
     const assigneeResult = await pool.query('SELECT id, gestor_id FROM users WHERE id = $1', [assignee_id])
     const assignee = assigneeResult.rows[0]
 
-    if (!assignee || (assignee.id !== req.user.id && assignee.gestor_id !== req.user.id)) {
-      return res.status(403).json({ error: 'Você só pode atribuir tarefas a si mesmo ou aos seus subordinados' })
+    if (!assignee || assignee.gestor_id !== req.user.id) {
+      return res.status(403).json({ error: 'Você só pode atribuir tarefas a subordinados diretos' })
     }
 
     const insertResult = await pool.query(
@@ -43,10 +47,10 @@ async function getTasks(req, res) {
   try {
     const { id: userId, nivel } = req.user
 
-    const whereClause = nivel >= 2 ? 't.gestor_id = $1' : 't.assignee_id = $1'
+    const isAdmin = nivel >= 3
+    const whereClause = isAdmin ? 'TRUE' : nivel >= 2 ? 't.gestor_id = $1' : 't.assignee_id = $1'
 
-    const result = await pool.query(
-      `SELECT
+    const query = `SELECT
          t.*,
          u.name  AS assignee_name,
          u.email AS assignee_email,
@@ -54,9 +58,11 @@ async function getTasks(req, res) {
        FROM tasks t
        LEFT JOIN users u ON t.assignee_id = u.id
        WHERE ${whereClause}
-       ORDER BY t.created_at DESC`,
-      [userId]
-    )
+       ORDER BY t.created_at DESC`
+
+    const params = isAdmin ? [] : [userId]
+
+    const result = await pool.query(query, params)
 
     return res.status(200).json({ tasks: result.rows })
   } catch (error) {
@@ -97,17 +103,12 @@ async function updateTaskStatus(req, res) {
 
     // Adiciona pontos ao usuário quando a tarefa passa para done (Low/Medium/High)
     let awardedPoints = 0
-    if (status === 'done' && task.status !== 'done' && !task.credited) {
-      if (task.points <= 10) {
-        awardedPoints = 10
-      } else if (task.points <= 20) {
-        awardedPoints = 20
-      } else {
-        awardedPoints = 40
-      }
+    let sendForReview = false
 
-      await pool.query('UPDATE users SET points = points + $1 WHERE id = $2', [awardedPoints, task.assignee_id])
-      await addPointsToUser(task.assignee_id, awardedPoints)
+    if (status === 'done' && task.status !== 'done' && !task.credited) {
+      // Removido: não creditar pontos automaticamente ao marcar como done
+      // Apenas sinaliza que será enviada para aprovação
+      sendForReview = true
     }
 
     const updates = ['status = $1', 'updated_at = NOW()']
@@ -118,9 +119,10 @@ async function updateTaskStatus(req, res) {
       values.push(evidence)
     }
 
-    if (status === 'done' && task.status !== 'done' && !task.credited) {
-      updates.push('credited = TRUE')
-    }
+    // Removido: não marcar credited como TRUE ao marcar como done
+    // if (status === 'done' && task.status !== 'done' && !task.credited) {
+    //   updates.push('credited = TRUE')
+    // }
 
     const idPlaceholder = `$${values.length + 1}`
     const query = `UPDATE tasks SET ${updates.join(', ')} WHERE id = ${idPlaceholder} RETURNING id, status, evidence, updated_at`
@@ -129,7 +131,11 @@ async function updateTaskStatus(req, res) {
 
     const updated = await pool.query(query, values)
 
-    return res.status(200).json({ message: 'Status atualizado com sucesso', task: updated.rows[0] })
+    const message = sendForReview
+      ? 'Tarefa enviada para aprovação do gestor.'
+      : 'Status atualizado com sucesso'
+
+    return res.status(200).json({ message, task: updated.rows[0] })
   } catch (error) {
     console.error('updateTaskStatus error:', error)
     return res.status(500).json({ error: 'Erro interno do servidor' })
@@ -139,7 +145,7 @@ async function updateTaskStatus(req, res) {
 async function reviewTask(req, res) {
   try {
     const { id } = req.params
-    const { action } = req.body
+    const { action, feedback } = req.body
 
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ error: "A ação deve ser 'approve' ou 'reject'" })
@@ -168,7 +174,7 @@ async function reviewTask(req, res) {
     let awardedPoints = 0
 
     if (action === 'approve' && !task.credited) {
-      await pool.query('UPDATE users SET points = points + $1 WHERE id = $2', [task.points || 0, task.assignee_id])
+      await addPointsToUser(task.assignee_id, task.points || 0)
       awardedPoints = task.points || 0
     }
 
@@ -182,7 +188,6 @@ async function reviewTask(req, res) {
 
     return res.status(200).json({
       message: `Tarefa ${action === 'approve' ? 'aprovada' : 'reprovada'} com sucesso`,
-      task: { id: task.id, status: newStatus, credited: action === 'approve' },
       pointsCredited: awardedPoints,
       updatedPoints: currentPoints,
       assigneeId: task.assignee_id,
@@ -277,7 +282,10 @@ async function deleteTask(req, res) {
       return res.status(404).json({ error: 'Tarefa não encontrada' })
     }
 
-    if (task.gestor_id !== req.user.id) {
+    const isAdmin = req.user.nivel >= 3
+    const isTaskManager = task.gestor_id === req.user.id
+
+    if (!isAdmin && !isTaskManager) {
       return res.status(403).json({ error: 'Você não tem permissão para excluir esta tarefa' })
     }
 

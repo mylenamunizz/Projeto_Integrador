@@ -1,4 +1,6 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Nunito:wght@400;600;700;800;900&family=Orbitron:wght@700;900&family=Syne:wght@700;800&display=swap');
+@import "./styles/dashboard-tokens.css";
+@import "./styles/feed-tokens.css";
 
 @tailwind base;
 @tailwind components;
@@ -6,8 +8,8 @@
 
 @layer base {
   :root {
-    --font-heading: 'Space Grotesk', sans-serif;
-    --font-body: 'Inter', sans-serif;
+    --font-heading: 'Syne', sans-serif;
+    --font-body: 'DM Sans', sans-serif;
 
     /* --- light theme palette --- */
     --background: 0 0% 90%;

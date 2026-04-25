@@ -1,95 +1,117 @@
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Trophy, Star, Medal, TrendingUp } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
-import { getActiveUsers } from "@/data/mock";
+import { Trophy } from "lucide-react";
+import { getApiUrl, getAuthHeaders } from "@/lib/api";
+import RocketPodium from "@/components/RocketPodium";
 
-const podiumColors = [
-  "from-[hsl(43,100%,65%)] to-[hsl(43,100%,65%)]",
-  "from-[hsl(0,0%,75%)] to-[hsl(0,0%,75%)]",
-  "from-[hsl(38,97%,33%)] to-[hsl(38,97%,33%)]",
-];
+interface RankingUser {
+  id: string;
+  name: string;
+  points: number;
+  role: string;
+  avColor?: string;
+}
+
+function getAvatarColor(char: string): string {
+  const colors = [
+    '#7c5cbf', '#5a4a9f', '#3a3a8f', '#6b4c8a', '#8a5a7f',
+    '#5038a0', '#6a48aa', '#7a58ba', '#4a38a0', '#9a6abb'
+  ];
+  return colors[char.charCodeAt(0) % colors.length];
+}
 
 export default function Ranking() {
-  const sorted = [...getActiveUsers()].filter((u) => u.nivel !== 3).sort((a, b) => b.points - a.points);
+  const [users, setUsers] = useState<RankingUser[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function fetchRanking() {
+      try {
+        setLoading(true);
+        const res = await fetch(getApiUrl("/api/rewards/leaderboard"), {
+          headers: getAuthHeaders(),
+        });
+
+        if (!res.ok) throw new Error("Erro ao buscar ranking");
+
+        const json = await res.json();
+        const data: Array<{ user_id: number; name: string; total_points: number }> =
+          json.data ?? [];
+
+        const mapped: RankingUser[] = data.map((u) => ({
+          id: String(u.user_id),
+          name: u.name,
+          points: u.total_points,
+          role: "membro",
+          avColor: getAvatarColor(u.name.charAt(0)),
+        }));
+
+        setUsers(mapped);
+      } catch (err) {
+        console.error(err);
+        setError("Não foi possível carregar o ranking.");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchRanking();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Carregando ranking...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-destructive">{error}</p>
+      </div>
+    );
+  }
+
+  if (users.length < 3) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">
+          São necessários pelo menos 3 usuários com pontos para exibir o ranking.
+        </p>
+      </div>
+    );
+  }
+
+  const top3: [RankingUser, RankingUser, RankingUser] = [
+    users[1], // 2º lugar (posição esquerda no pódio)
+    users[0], // 1º lugar (centro)
+    users[2], // 3º lugar (direita)
+  ];
 
   return (
-    <div className="p-6 lg:p-8 space-y-8">
-      <div>
-        <h1 className="text-3xl font-heading font-bold text-foreground flex items-center gap-3">
-          <Trophy className="w-8 h-8 text-warning" />
-          Ranking de Produtividade
-        </h1>
-        <p className="text-muted-foreground mt-1">Os membros mais produtivos da equipe</p>
-      </div>
+    <div className="min-h-screen bg-[color:var(--bg)] text-[color:var(--text)]">
+      <div className="p-6 lg:p-8">
+        <div className="rounded-[24px] border border-[color:var(--border)] bg-[color:var(--surface)] p-8 space-y-8">
+          <div>
+            <h1 className="text-3xl font-heading font-bold text-foreground flex items-center gap-3">
+              <Trophy className="w-8 h-8 text-[color:var(--gold)]" />
+              Ranking de Produtividade
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              Os membros mais produtivos da equipe
+            </p>
+          </div>
 
-      {/* Top 3 */}
-      <div className="grid grid-cols-3 gap-4 max-w-2xl mx-auto">
-        {[sorted[1], sorted[0], sorted[2]].map((member, i) => {
-          const pos = i === 0 ? 2 : i === 1 ? 1 : 3;
-          const isFirst = pos === 1;
-          return (
-            <motion.div
-              key={member.id}
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.15 }}
-              className={`text-center ${isFirst ? "-mt-4" : "mt-4"}`}
-            >
-              <div className={`w-20 h-20 mx-auto rounded-full bg-gradient-to-br ${podiumColors[pos - 1]} flex items-center justify-center mb-3 ${isFirst ? "w-24 h-24 ring-4 ring-warning/30" : ""}`}>
-                <span className="font-heading font-bold text-2xl text-foreground">
-                  {member.name.charAt(0)}
-                </span>
-              </div>
-              <div className="flex items-center justify-center gap-1 mb-1">
-                {pos === 1 && <Medal className="w-5 h-5 text-warning" />}
-                <span className="font-heading font-bold text-lg text-foreground">#{pos}</span>
-              </div>
-              <p className="text-sm font-medium text-foreground">{member.name.split(" ")[0]}</p>
-              <div className="flex items-center justify-center gap-1 mt-1">
-                <Star className="w-3.5 h-3.5 text-warning" />
-                <span className="text-sm font-semibold text-foreground">{member.points}</span>
-              </div>
-            </motion.div>
-          );
-        })}
+          <RocketPodium
+            top3={top3}
+            fullList={users}
+            currentUserId={undefined}
+          />
+        </div>
       </div>
-
-      {/* Full List */}
-      <Card>
-        <CardContent className="p-0">
-          {sorted.map((member, i) => (
-            <motion.div
-              key={member.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.05 }}
-              className="flex items-center gap-4 p-4 border-b border-border last:border-0 hover:bg-secondary/50 transition-colors"
-            >
-              <span className={`w-10 h-10 rounded-full flex items-center justify-center font-heading font-bold text-sm flex-shrink-0 ${
-                i === 0 ? "bg-warning text-warning-foreground" : i === 1 ? "bg-secondary text-muted-foreground" : i === 2 ? "bg-warning/40 text-foreground" : "bg-muted text-muted-foreground"
-              }`}>
-                {i + 1}
-              </span>
-              <div className="w-10 h-10 rounded-full bg-gradient-primary flex items-center justify-center flex-shrink-0">
-                <span className="text-primary-foreground font-semibold text-sm">
-                  {member.name.charAt(0)}
-                </span>
-              </div>
-              <div className="flex-1">
-                <p className="font-medium text-foreground">{member.name}</p>
-                <p className="text-xs text-muted-foreground">{member.role === "gestor" ? "Gestor" : member.role === "admin" ? "Admin" : "Membro"}</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <TrendingUp className="w-4 h-4 text-primary" />
-                <div className="flex items-center gap-1">
-                  <Star className="w-4 h-4 text-warning" />
-                  <span className="font-heading font-bold text-foreground">{member.points}</span>
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </CardContent>
-      </Card>
     </div>
   );
 }

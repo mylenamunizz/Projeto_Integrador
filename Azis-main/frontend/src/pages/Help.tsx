@@ -5,11 +5,8 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 
 const faqs = [
   { q: "Como funciona o sistema de pontos?", a: "Cada tarefa concluída gera pontos. Os pontos podem ser acumulados e trocados por recompensas definidas pelo gestor da sua instituição." },
-  { q: "Como registro meu humor diário?", a: "Acesse a página 'Humor' no menu lateral e selecione o emoji que melhor representa como você está se sentindo hoje." },
   { q: "Posso ocultar minha posição no ranking?", a: "Sim! Acesse seu perfil e desative a opção 'Aparecer no ranking' nas configurações de privacidade." },
   { q: "Como resgatar recompensas?", a: "Vá até a página de Recompensas, escolha o prêmio desejado e clique em 'Resgatar'. Os pontos serão descontados automaticamente." },
-  { q: "O que é o feedback mensal?", a: "Todo mês, você receberá um questionário rápido sobre produtividade, motivação e bem-estar. Seus dados são anônimos para o gestor." },
-  { q: "Como convido membros para minha equipe?", a: "Na página 'Instituição', use o formulário de convite por email. O convidado receberá um link para criar sua conta." },
 ];
 
 export default function Help() {

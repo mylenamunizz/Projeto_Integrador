@@ -1,18 +1,53 @@
 const { pool } = require('../config/db')
 const bcrypt = require('bcryptjs')
 const { normalizeRole, getNivelFromRole, isRoleNivelConsistent } = require('../utils/roleUtils')
+const { sanitizeUsers } = require('../utils/sanitizer')
+
+async function getCurrentUser(req, res) {
+  try {
+    const result = await pool.query(
+      `SELECT u.id, u.name, u.email, u.role, u.nivel, u.position, u.points, u.gestor_id AS "gestorId",
+              COALESCE(up.total_points, 0) AS total_points
+       FROM users u
+       LEFT JOIN user_points up ON u.id = up.user_id
+       WHERE u.id = $1`,
+      [req.user.id]
+    )
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Usuário não encontrado' })
+    }
+
+    const user = result.rows[0]
+    user.role = normalizeRole(user.role)
+    // Usar total_points como points para consistência
+    user.points = user.total_points
+    delete user.total_points
+
+    return res.status(200).json(user)
+  } catch (error) {
+    console.error('getCurrentUser error:', error)
+    return res.status(500).json({ error: 'Erro interno do servidor' })
+  }
+}
 
 async function getUsers(req, res) {
   try {
     const result = await pool.query(
-      'SELECT id, name, email, role, nivel, position, points, gestor_id AS "gestorId" FROM users'
+      `SELECT u.id, u.name, u.email, u.role, u.nivel, u.position, u.points, u.gestor_id AS "gestorId",
+              COALESCE(up.total_points, 0) AS total_points
+       FROM users u
+       LEFT JOIN user_points up ON u.id = up.user_id`
     )
 
     // Normalize roles for legacy data
-    const users = result.rows.map((u) => ({
-      ...u,
-      role: normalizeRole(u.role),
-    }))
+    const users = result.rows.map((u) => {
+      const user = { ...u, role: normalizeRole(u.role) }
+      // Usar total_points como points para consistência
+      user.points = user.total_points
+      delete user.total_points
+      return user
+    })
 
     return res.status(200).json(users)
   } catch (error) {
@@ -101,11 +136,14 @@ async function clearOrganization(req, res) {
 
 async function createUsers(req, res) {
   try {
-    const users = req.body // array of users
+    let users = req.body // array of users
 
     if (!Array.isArray(users) || users.length === 0) {
       return res.status(400).json({ error: 'Lista de usuários inválida' })
     }
+
+    // First pass: sanitize all user data to remove trailing delimiters
+    users = sanitizeUsers(users)
 
     // Remove duplicated emails already persistidos no banco (manter um registro por email)
     await pool.query(`
@@ -173,8 +211,8 @@ async function createUsers(req, res) {
         const hashedPassword = await bcrypt.hash(defaultPassword, 10)
 
         const insertResult = await pool.query(
-          'INSERT INTO users (name, email, role, nivel, position, points, password) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id, name, email, role, nivel, position, points',
-          [name, email, normalizedRole, nivel, position || null, points || 0, hashedPassword]
+          'INSERT INTO users (name, email, role, nivel, position, password) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, name, email, role, nivel, position',
+          [name, email, normalizedRole, nivel, position || null, hashedPassword]
         )
 
         createdUsers.push({ ...insertResult.rows[0], managerEmail })
@@ -190,15 +228,32 @@ async function createUsers(req, res) {
 
     // Passagem 2 — resolver vínculos de gestor
     for (const link of pendingManagerLinks) {
-      const subordinate = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [link.email])
-      const manager = await pool.query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [link.managerEmail])
+      const subordinate = await pool.query('SELECT id, name, email FROM users WHERE LOWER(email) = LOWER($1)', [link.email])
+      const manager = await pool.query('SELECT id, email FROM users WHERE LOWER(email) = LOWER($1)', [link.managerEmail])
 
       if (subordinate.rows.length === 0) continue
+
+      const subordinateRow = subordinate.rows[0]
+      const managerRow = manager.rows[0]
+
+      // Se managerEmail aponta para si mesmo, mantemos gestor_id como null para estruturar como root.
+      if (managerRow && subordinateRow && subordinateRow.email.toLowerCase() === managerRow.email.toLowerCase()) {
+        console.info(`ℹ️ [IMPORT INFO] Usuário '${subordinateRow.email}' não será vinculado como gestor de si mesmo`)
+        continue
+      }
 
       if (manager.rows.length > 0) {
         await pool.query('UPDATE users SET gestor_id = $1 WHERE id = $2', [manager.rows[0].id, subordinate.rows[0].id])
       } else {
-        errors.push({ linha: null, email: link.email, status: 'aviso', motivo: `Gestor '${link.managerEmail}' não encontrado — gestor_id não vinculado` })
+        const subordinateName = subordinateRow?.name || 'Desconhecido'
+        const warningMessage = `⚠️ [IMPORT WARNING] Manager not found for user "${subordinateName}" (${link.email}): managerEmail="${link.managerEmail}" does not exist in database`
+        console.warn(warningMessage)
+        errors.push({ 
+          linha: null, 
+          email: link.email, 
+          status: 'aviso', 
+          motivo: `Gestor '${link.managerEmail}' não encontrado — gestor_id não vinculado` 
+        })
       }
     }
 
@@ -223,6 +278,7 @@ async function createUsers(req, res) {
 
 module.exports = {
   getUsers,
+  getCurrentUser,
   createUsers,
   updateUser,
   deleteUserById,

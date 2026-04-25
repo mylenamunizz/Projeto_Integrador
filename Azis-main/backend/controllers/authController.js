@@ -7,7 +7,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'azis_secret_key'
 
 async function register(req, res) {
   try {
-    const { name, email, institution, password, role, position, gestor_id, points } = req.body
+    const { name, email, institution, password, role, position, gestor_id } = req.body
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Campos obrigatórios faltando' })
@@ -24,7 +24,7 @@ async function register(req, res) {
     const hashedPassword = await bcrypt.hash(password, 10)
 
     const insertResult = await pool.query(
-      'INSERT INTO users (name, email, institution, password, role, nivel, position, gestor_id, points) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id, name, email, institution, role, nivel, position, gestor_id AS "gestorId", points',
+      'INSERT INTO users (name, email, institution, password, role, nivel, position, gestor_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id, name, email, institution, role, nivel, position, gestor_id AS "gestorId"',
       [
         name,
         email,
@@ -34,7 +34,6 @@ async function register(req, res) {
         nivel,
         position || null,
         gestor_id || null,
-        points || 0,
       ]
     )
 
@@ -42,7 +41,7 @@ async function register(req, res) {
 
     return res.status(201).json({
       message: 'Usuário cadastrado com sucesso',
-      user: { ...user, points: user.points || 0 },
+      user,
     })
   } catch (error) {
     console.error('register error:', error)

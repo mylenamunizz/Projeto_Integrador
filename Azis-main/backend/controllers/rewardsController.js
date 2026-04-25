@@ -107,12 +107,14 @@ async function redeemReward(req, res) {
     return res.status(201).json({ message: 'Recompensa resgatada com sucesso', data: result })
   } catch (error) {
     console.error('redeemReward error:', error)
-    if (error.message.includes('Saldo insuficiente') || error.message.includes('sem estoque')) {
+    if (error?.message?.includes('Saldo insuficiente') || error?.message?.includes('sem estoque')) {
       return res.status(400).json({ message: error.message, data: null })
-    } else if (error.message.includes('não encontrada')) {
+    } else if (error?.message?.includes('não encontrada') || error?.message?.includes('inativa')) {
       return res.status(404).json({ message: error.message, data: null })
     }
-    return res.status(500).json({ message: 'Erro interno', data: null })
+
+    // Retornar detalhe extra em dev para identificar falha exata
+    return res.status(500).json({ message: `Erro interno: ${error?.message ?? 'sem detalhes'}`, data: null })
   }
 }
 
@@ -148,6 +150,19 @@ async function getMyPoints(req, res) {
   }
 }
 
+async function deleteMyRedemptions(req, res) {
+  try {
+    const userId = req.user.id
+
+    const result = await pool.query('DELETE FROM redemptions WHERE user_id = $1 RETURNING id', [userId])
+
+    return res.status(200).json({ message: 'Histórico de resgates apagado', deleted: result.rowCount })
+  } catch (error) {
+    console.error('deleteMyRedemptions error:', error)
+    return res.status(500).json({ message: 'Erro interno', data: null })
+  }
+}
+
 module.exports = {
   getAllRewardsAdmin,
   getActiveRewards,
@@ -157,6 +172,7 @@ module.exports = {
   deleteReward,
   redeemReward,
   getMyRedemptions,
+  deleteMyRedemptions,
   getLeaderboard,
   getMyPoints,
 }

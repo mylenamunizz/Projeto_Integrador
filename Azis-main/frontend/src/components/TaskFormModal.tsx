@@ -36,6 +36,10 @@ const formSchema = z.object({
   title: z.string().min(1, "Título é obrigatório"),
   description: z.string().min(1, "Descrição é obrigatória"),
   assignedTo: z.string().min(1, "Atribuição é obrigatória"),
+  points: z.coerce
+    .number()
+    .min(1, "Pontos devem estar entre 1 e 1000")
+    .max(1000, "Pontos devem estar entre 1 e 1000"),
 });
 
 type FormData = z.infer<typeof formSchema>;
@@ -47,6 +51,7 @@ interface User {
   role: string;
   nivel?: number;
   gestorId?: string | null;
+  managerEmail?: string | null;
 }
 
 interface TaskFormModalProps {
@@ -68,33 +73,24 @@ export default function TaskFormModal({ trigger, onSubmit }: TaskFormModalProps)
       title: "",
       description: "",
       assignedTo: "",
+      points: 10,
     },
   });
 
-  const getAllSubordinateIds = (allUsers: User[], gestorId: string | number): string[] => {
-    const gestorIdStr = gestorId?.toString();
-    const direct = allUsers
-      .filter((u) => u.gestorId !== undefined && u.gestorId !== null && u.gestorId.toString() === gestorIdStr)
-      .map((u) => u.id.toString());
-
-    const indirect = direct.flatMap((subId) => getAllSubordinateIds(allUsers, subId));
-    return [...new Set([...direct, ...indirect])];
-  };
+  const pointsValue = form.watch("points");
+  const parsedPoints = typeof pointsValue === "number" ? pointsValue : Number(pointsValue);
+  const currentPoints = Number.isFinite(parsedPoints) ? parsedPoints : 0;
+  const isPointsInvalid = currentPoints < 1 || currentPoints > 1000;
 
   const subordinates = users
     ? users.filter((user) => {
-        if (!currentUser) return true;
+        if (!currentUser || currentUser.role !== 'gestor') return false;
 
-        const currentId = currentUser.id?.toString();
-        const subordinateIds = getAllSubordinateIds(users, currentId);
+        const isDirectSubordinateById = user.gestorId?.toString() === currentUser.id?.toString();
+        const isDirectSubordinateByEmail =
+          user.managerEmail?.toString().toLowerCase() === currentUser.email?.toLowerCase();
 
-        // If the user has subordinates, show them.
-        if (subordinateIds.length > 0) {
-          return subordinateIds.includes(user.id.toString());
-        }
-
-        // Otherwise, fall back to allowing the current user to assign to themselves.
-        return user.id.toString() === currentId;
+        return Boolean(isDirectSubordinateById || isDirectSubordinateByEmail);
       })
     : [];
 
@@ -152,6 +148,49 @@ export default function TaskFormModal({ trigger, onSubmit }: TaskFormModalProps)
             />
             <FormField
               control={form.control}
+              name="points"
+              render={({ field }) => (
+                <FormItem className="col-span-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <FormLabel className="text-sm font-medium text-[color:var(--text)]">
+                      Pontos da Tarefa
+                    </FormLabel>
+                    <span className="flex items-center gap-1 text-sm font-bold text-[#f59e0b]">
+                      ⭐ {currentPoints || 0} pts
+                    </span>
+                  </div>
+                  <FormControl>
+                    <Input
+                      type="number"
+                      value={field.value ?? ""}
+                      onChange={(e) => field.onChange(e.target.value === "" ? "" : Number(e.target.value))}
+                      min="1"
+                      max="1000"
+                      placeholder="Digite os pontos (1–1000)"
+                      className={`
+                        mt-1 bg-[color:var(--surface2)] border text-[color:var(--text)] transition-colors
+                        ${
+                          isPointsInvalid
+                            ? "border-red-500 focus-visible:ring-red-500"
+                            : "border-[color:var(--accent)] focus-visible:ring-[color:var(--accent)]"
+                        }
+                      `}
+                    />
+                  </FormControl>
+                  {isPointsInvalid ? (
+                    <p className="text-xs text-red-500 mt-1">
+                      ⚠️ O valor deve estar entre 1 e 1000 pontos.
+                    </p>
+                  ) : (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Digite quantos pontos esta tarefa vale ao ser concluída.
+                    </p>
+                  )}
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
               name="assignedTo"
               render={({ field }) => (
                 <FormItem>
@@ -172,12 +211,16 @@ export default function TaskFormModal({ trigger, onSubmit }: TaskFormModalProps)
                         <div className="p-2 text-sm text-destructive">
                           Erro ao carregar usuários
                         </div>
-                      ) : (
+                      ) : subordinates.length > 0 ? (
                         subordinates.map((user) => (
                           <SelectItem key={user.id} value={user.id}>
                             {user.name}
                           </SelectItem>
                         ))
+                      ) : (
+                        <div className="p-2 text-sm text-muted-foreground">
+                          Nenhum subordinado disponível para este gestor
+                        </div>
                       )}
                     </SelectContent>
                   </Select>

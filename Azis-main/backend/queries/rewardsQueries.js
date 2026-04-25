@@ -2,13 +2,14 @@ const { pool } = require('../config/db')
 
 async function createReward(title, description, points_cost, quantity, created_by = null) {
   try {
-    if (!title || points_cost <= 0 || quantity < 0) {
-      throw new Error('Título, pontos_cost (>0) e quantidade obrigatórios')
+    const nameValue = title || description || ''
+    if (!nameValue || points_cost <= 0 || quantity < 0) {
+      throw new Error('Título, points_cost (>0) e quantity obrigatórios')
     }
 
     const result = await pool.query(
-      'INSERT INTO rewards (title, name, description, points_cost, cost, quantity, stock, active, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()) RETURNING *',
-      [title, title, description || null, points_cost, points_cost, quantity, quantity, true, created_by || null]
+      'INSERT INTO rewards (name, title, description, points_cost, cost, quantity, active, created_by, created_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW()) RETURNING *',
+      [nameValue, title, description || null, points_cost, points_cost, quantity, true, created_by || null]
     )
     return result.rows[0]
   } catch (error) {
@@ -19,14 +20,14 @@ async function createReward(title, description, points_cost, quantity, created_b
 
 async function getAllRewardsAdmin() {
   const result = await pool.query(
-    'SELECT id, title, description, points_cost, quantity, active, created_by, created_at FROM rewards ORDER BY created_at DESC'
+    'SELECT id, COALESCE(name, title) AS name, title, description, points_cost, cost, quantity, active, created_by, created_at FROM rewards ORDER BY created_at DESC'
   )
   return result.rows
 }
 
 async function getActiveRewards() {
   const result = await pool.query(
-    'SELECT id, title, description, points_cost, quantity, active, created_by, created_at FROM rewards WHERE active = TRUE AND quantity > 0 ORDER BY points_cost ASC'
+    'SELECT id, COALESCE(name, title) AS name, title, description, points_cost, cost, quantity, active, created_by, created_at FROM rewards WHERE active = TRUE AND quantity > 0 ORDER BY points_cost ASC'
   )
   return result.rows
 }
@@ -99,22 +100,51 @@ async function redeemReward(userId, rewardId) {
     }
 
     const userPointsResult = await client.query('SELECT total_points FROM user_points WHERE user_id = $1 FOR UPDATE', [userId])
-    const userPoints = userPointsResult.rows[0]?.total_points || 0
+    let userPoints = userPointsResult.rows[0]?.total_points ?? null
+
+    if (userPoints === null) {
+      await client.query('INSERT INTO user_points (user_id, total_points, updated_at) VALUES ($1, $2, NOW())', [userId, 0])
+      userPoints = 0
+    }
 
     if (userPoints < reward.points_cost) {
       throw new Error('Saldo insuficiente')
     }
 
-    await client.query('UPDATE rewards SET quantity = quantity - 1 WHERE id = $1', [rewardId])
-    await client.query('UPDATE user_points SET total_points = total_points - $1, updated_at = NOW() WHERE user_id = $2', [reward.points_cost, userId])
+    const rewardUpdate = await client.query('UPDATE rewards SET quantity = quantity - 1 WHERE id = $1 RETURNING quantity', [rewardId])
+    if (rewardUpdate.rows.length === 0) {
+      throw new Error('Erro ao atualizar estoque da recompensa')
+    }
 
-    await client.query('INSERT INTO redemptions (user_id, reward_id, points_spent, redeemed_at) VALUES ($1, $2, $3, NOW())', [userId, rewardId, reward.points_cost])
+    const updateUserPoints = await client.query('UPDATE user_points SET total_points = total_points - $1, updated_at = NOW() WHERE user_id = $2 RETURNING total_points', [reward.points_cost, userId])
+    if (updateUserPoints.rows.length === 0) {
+      throw new Error('Não foi possível atualizar pontos de usuário')
+    }
+
+    const updateUsers = await client.query('UPDATE users SET points = points - $1 WHERE id = $2 RETURNING points', [reward.points_cost, userId])
+    if (updateUsers.rows.length === 0) {
+      throw new Error('Não foi possível atualizar pontos no usuário')
+    }
+
+    const newTotalPoints = updateUserPoints.rows[0].total_points
+
+    const voucherCode = `RW-${rewardId}-${userId}-${Date.now()}`
+
+    const redemptionResult = await client.query(
+      'INSERT INTO redemptions (user_id, reward_id, points_spent, cost, voucher_code, status, redeemed_at, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW(), NOW()) RETURNING *',
+      [userId, rewardId, reward.points_cost, reward.points_cost, voucherCode, 'completed']
+    )
 
     await client.query('COMMIT')
 
     return {
       reward,
-      remaining_points: userPoints - reward.points_cost,
+      remaining_points: newTotalPoints,
+      redemption: {
+        ...redemptionResult.rows[0],
+        reward_name: reward.name || reward.title,
+        reward_description: reward.description,
+      },
     }
   } catch (error) {
     await client.query('ROLLBACK')
@@ -126,11 +156,14 @@ async function redeemReward(userId, rewardId) {
 
 async function getMyRedemptions(userId) {
   const result = await pool.query(
-    `SELECT r.*, rew.title, rew.description
-      FROM redemptions r
-      JOIN rewards rew ON r.reward_id = rew.id
-      WHERE r.user_id = $1
-      ORDER BY r.redeemed_at DESC`,
+    `SELECT
+      r.*, 
+      COALESCE(rew.name, rew.title) AS reward_name,
+      rew.description AS reward_description
+    FROM redemptions r
+    JOIN rewards rew ON r.reward_id = rew.id
+    WHERE r.user_id = $1
+    ORDER BY r.redeemed_at DESC`,
     [userId]
   )
   return result.rows
@@ -141,6 +174,7 @@ async function getLeaderboard(limit = 10) {
     `SELECT u.id AS user_id, u.name, COALESCE(up.total_points, 0) AS total_points
       FROM users u
       LEFT JOIN user_points up ON u.id = up.user_id
+      WHERE u.nivel < 3
       ORDER BY total_points DESC
       LIMIT $1`,
     [limit]

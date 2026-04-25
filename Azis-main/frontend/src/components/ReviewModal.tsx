@@ -9,7 +9,20 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
-import { Loader2, CheckCircle, XCircle, Star, Calendar, User } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, CheckCircle, XCircle, Star, Calendar, User, AlertTriangle } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface Task {
   id: string;
@@ -27,11 +40,14 @@ interface ReviewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   task: Task | null;
-  onReview: (action: "approve" | "reject") => void;
+  onReview: (action: "approve" | "reject", feedback?: string) => void;
   loading?: boolean;
 }
 
 export default function ReviewModal({ open, onOpenChange, task, onReview, loading }: ReviewModalProps) {
+  const [feedback, setFeedback] = useState("");
+  const [showRejectConfirm, setShowRejectConfirm] = useState(false);
+
   if (!task) return null;
 
   return (
@@ -79,10 +95,27 @@ export default function ReviewModal({ open, onOpenChange, task, onReview, loadin
             )}
           </Card>
 
+          <Alert>
+            <AlertTriangle className="h-4 w-4" />
+            <AlertDescription>
+              Aprovando: {task.points} pontos serão creditados. Reprovando: nenhum ponto será atribuído.
+            </AlertDescription>
+          </Alert>
+
+          <div className="space-y-2">
+            <Label htmlFor="feedback">Feedback (opcional)</Label>
+            <Textarea
+              id="feedback"
+              placeholder="Deixe um comentário para o funcionário..."
+              value={feedback}
+              onChange={(e) => setFeedback(e.target.value)}
+              rows={3}
+            />
+          </div>
           <div className="flex justify-end gap-3">
             <Button
               variant="outline"
-              onClick={() => onReview("reject")}
+              onClick={() => setShowRejectConfirm(true)}
               disabled={loading}
               className="border-destructive text-destructive hover:bg-destructive hover:text-destructive-foreground"
             >
@@ -91,17 +124,40 @@ export default function ReviewModal({ open, onOpenChange, task, onReview, loadin
               Reprovar
             </Button>
             <Button
-              onClick={() => onReview("approve")}
+              onClick={() => onReview("approve", feedback)}
               disabled={loading}
               className="bg-success hover:bg-success/90"
             >
               {loading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               <CheckCircle className="w-4 h-4 mr-2" />
-              Aprovar
+              Aprovar (+{task.points} pts)
             </Button>
           </div>
         </div>
       </DialogContent>
+
+      <AlertDialog open={showRejectConfirm} onOpenChange={setShowRejectConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar Reprovação</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tem certeza que deseja reprovar esta tarefa? Nenhum ponto será atribuído ao funcionário.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                onReview("reject", feedback);
+                setShowRejectConfirm(false);
+              }}
+              className="bg-destructive hover:bg-destructive/90"
+            >
+              Reprovar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Dialog>
   );
 }

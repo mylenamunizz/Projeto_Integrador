@@ -27,6 +27,8 @@ export interface Task {
   points: number;
   deadline: string;
   created_at: string;
+  isDeleting?: boolean;
+  deleteCountdown?: number;
 }
 
 export interface Reward {
@@ -50,70 +52,10 @@ export const users: User[] = [
     avatar: "",
     role: "gestor",
     nivel: 2,
-    points: 1250,
+    points: undefined,
     institution_id: "1",
     position: "CEO",
     gestorId: null,
-  },
-  {
-    id: "2",
-    name: "Carlos Santos",
-    email: "carlos@azis.com",
-    avatar: "",
-    role: "funcionario",
-    nivel: 1,
-    points: 980,
-    institution_id: "1",
-    position: "Frontend Developer",
-    gestorId: "1",
-  },
-  {
-    id: "3",
-    name: "Maria Oliveira",
-    email: "maria@azis.com",
-    avatar: "",
-    role: "funcionario",
-    nivel: 1,
-    points: 1100,
-    institution_id: "1",
-    position: "Backend Developer",
-    gestorId: "1",
-  },
-  {
-    id: "4",
-    name: "Pedro Costa",
-    email: "pedro@azis.com",
-    avatar: "",
-    role: "funcionario",
-    nivel: 1,
-    points: 750,
-    institution_id: "1",
-    position: "QA Engineer",
-    gestorId: "3",
-  },
-  {
-    id: "5",
-    name: "Julia Lima",
-    email: "julia@azis.com",
-    avatar: "",
-    role: "funcionario",
-    nivel: 1,
-    points: 890,
-    institution_id: "1",
-    position: "UX Designer",
-    gestorId: "2",
-  },
-  {
-    id: "6",
-    name: "Rafael Souza",
-    email: "rafael@azis.com",
-    avatar: "",
-    role: "funcionario",
-    nivel: 1,
-    points: 1350,
-    institution_id: "1",
-    position: "DevOps Engineer",
-    gestorId: "1",
   },
   {
     id: "0",
@@ -122,7 +64,7 @@ export const users: User[] = [
     avatar: "",
     role: "admin",
     nivel: 3,
-    points: 0,
+    points: undefined,
     institution_id: "1",
     position: "Administrador",
     gestorId: null,
@@ -258,9 +200,9 @@ export function getCurrentUser(): User {
           parsed.gestorId != null
             ? parsed.gestorId.toString()
             : parsed.gestor_id != null
-            ? parsed.gestor_id.toString()
-            : users[0].gestorId?.toString() ?? null,
-        points: typeof parsed.points === "number" ? parsed.points : users[0].points,
+              ? parsed.gestor_id.toString()
+              : users[0].gestorId?.toString() ?? null,
+        points: typeof parsed.points === "number" ? parsed.points : undefined,
       };
 
       return current;
@@ -280,69 +222,13 @@ export function getCurrentUser(): User {
 // TASKS
 // =====================
 
-export const mockTasks: Task[] = [
-  {
-    id: "t1",
-    title: "Redesign da landing page",
-    description: "Atualizar o design da página inicial",
-    assignee: users[1],
-    status: "todo",
-    points: 50,
-    deadline: "2026-03-15",
-    created_at: "2026-03-01",
-  },
-  {
-    id: "t2",
-    title: "Implementar API de pagamentos",
-    description: "Integrar gateway de pagamento",
-    assignee: users[2],
-    status: "in_progress",
-    points: 80,
-    deadline: "2026-03-20",
-    created_at: "2026-03-02",
-  },
-  {
-    id: "t3",
-    title: "Testes de integração",
-    description: "Criar testes automatizados",
-    assignee: users[3],
-    status: "done",
-    points: 40,
-    deadline: "2026-03-12",
-    created_at: "2026-03-01",
-  },
-];
+export const mockTasks: Task[] = [];
 
 // =====================
 // REWARDS
 // =====================
 
-export const mockRewards: Reward[] = [
-  {
-    id: "r1",
-    name: "Day Off",
-    description: "Um dia de folga extra",
-    image: "🏖️",
-    cost: 500,
-    available: 3,
-  },
-  {
-    id: "r2",
-    name: "Vale Almoço",
-    description: "Vale refeição",
-    image: "🍽️",
-    cost: 200,
-    available: 10,
-  },
-  {
-    id: "r3",
-    name: "Curso Online",
-    description: "Acesso a um curso na plataforma parceira",
-    image: "📚",
-    cost: 800,
-    available: 5,
-  },
-];
+export const mockRewards: Reward[] = [];
 
 // =====================
 // MOOD
@@ -356,20 +242,10 @@ export const moodLabels: Record<MoodType, { emoji: string; label: string }> = {
   stressed: { emoji: "😤", label: "Estressado" },
 };
 
-export const weeklyMoodData = [
-  { day: "Seg", happy: 4, neutral: 2, sad: 0 },
-  { day: "Ter", happy: 3, neutral: 2, sad: 1 },
-  { day: "Qua", happy: 5, neutral: 1, sad: 0 },
-  { day: "Qui", happy: 3, neutral: 3, sad: 0 },
-  { day: "Sex", happy: 4, neutral: 1, sad: 1 },
-];
+export const weeklyMoodData: Array<{ day: string; happy: number; neutral: number; sad: number }> = [];
 
 // =====================
 // PRODUCTIVITY
 // =====================
 
-export const monthlyProductivity = [
-  { month: "Jan", tasks: 42, points: 1250 },
-  { month: "Fev", tasks: 38, points: 1100 },
-  { month: "Mar", tasks: 55, points: 1680 },
-];
+export const monthlyProductivity: Array<{ month: string; tasks: number; points: number }> = [];

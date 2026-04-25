@@ -8,6 +8,7 @@ import Landing from "@/pages/Landing";
 import Login from "@/pages/Login";
 import Register from "@/pages/Register";
 import Dashboard from "@/pages/Dashboard";
+import Feed from "@/pages/Feed";
 import Kanban from "@/pages/Kanban";
 import Rewards from "@/pages/Rewards";
 import Ranking from "@/pages/Ranking";
@@ -19,12 +20,21 @@ import NotFound from "@/pages/NotFound";
 import UserImport from "./pages/UserImport";
 import OrgStructure from "./pages/OrgStructure";
 import { getCurrentUser } from "@/data/mock";
+import { useEffect } from "react";
 
 const queryClient = new QueryClient();
 
 
 const App = () => {
   const currentUser = getCurrentUser();
+
+  // Force dark mode
+  useEffect(() => {
+    document.documentElement.classList.add("dark");
+    document.documentElement.dataset.theme = "dark";
+    localStorage.setItem("theme", "dark");
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
@@ -37,6 +47,7 @@ const App = () => {
             <Route path="/register" element={<Register />} />
             <Route element={<AppLayout />}>
               <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/feed" element={<Feed />} />
               <Route path="/kanban" element={<Kanban />} />
               <Route path="/rewards" element={<Rewards />} />
               <Route path="/ranking" element={<Ranking />} />
